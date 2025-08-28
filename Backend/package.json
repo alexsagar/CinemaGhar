@@ -1,0 +1,29 @@
+{
+  "name": "backend",
+  "version": "1.0.0",
+  "description": "movie streaming site",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js",
+    "worker": "node -e \"import('./server/jobs/agenda.js').then(scheduler => scheduler.default.initialize())\"",
+    "worker:dev": "nodemon -e js -x \"node -e \\\"import('./server/jobs/agenda.js').then(scheduler => scheduler.default.initialize())\\\"\"",
+    "ingest:once": "node -e \"import('./server/jobs/agenda.js').then(async scheduler => { await scheduler.default.initialize(); await scheduler.default.runJob('tmdb.discover'); process.exit(0); })\"",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "sagarnepali",
+  "license": "ISC",
+  "dependencies": {
+    "agenda": "^5.0.0",
+    "axios": "^1.10.0",
+    "axios-retry": "^4.0.0",
+    "bcryptjs": "^3.0.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.0.1",
+    "express": "^5.1.0",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.16.1",
+    "nodemon": "^3.1.10"
+  }
+}
