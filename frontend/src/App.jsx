@@ -11,6 +11,7 @@ import Register from './pages/Register';
 import Admin from './pages/Admin';
 import MoviePlayer from './pages/MoviePlayer';
 import SeriesPlayer from './pages/SeriesPlayer';
+import Profile from './pages/Profile';
 import MovieInfo from './pages/MovieInfo';
 import ProtectedRoute from './components/ProtectedRoute';
 
@@ -44,6 +45,14 @@ function App() {
                     element={
                       <ProtectedRoute requireAdmin>
                         <Admin />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  <Route 
+                    path="/profile" 
+                    element={
+                      <ProtectedRoute>
+                        <Profile />
                       </ProtectedRoute>
                     } 
                   />

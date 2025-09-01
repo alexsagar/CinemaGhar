@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import axios from 'axios';
-import { ArrowLeft, ChevronLeft, ChevronRight, Tv, Info, Star, Clock, Film } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Tv, Info, Star, Clock, Film, Play, List } from 'lucide-react';
 import MovieCard from '../components/MovieCard';
 import EmbedPlayer from '../components/EmbedPlayer';
+import { generateSEPlayerUrl } from '../lib/utils';
 
 const SeriesPlayer = () => {
   const { id } = useParams();
@@ -12,6 +13,8 @@ const SeriesPlayer = () => {
   const [currentSeason, setCurrentSeason] = useState(1);
   const [currentEpisode, setCurrentEpisode] = useState(1);
   const [recommendations, setRecommendations] = useState([]);
+  const [showEpisodeList, setShowEpisodeList] = useState(false);
+  const [episodeList, setEpisodeList] = useState([]);
 
   const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -34,6 +37,25 @@ const SeriesPlayer = () => {
       if (seriesData.seriesInfo) {
         setCurrentSeason(1);
         setCurrentEpisode(1);
+        
+        // Generate episode list for all seasons
+        const episodes = [];
+        if (seriesData.seriesInfo.seasons) {
+          seriesData.seriesInfo.seasons.forEach((season, seasonIndex) => {
+            if (season.episodes) {
+              season.episodes.forEach((episode, episodeIndex) => {
+                episodes.push({
+                  season: seasonIndex + 1,
+                  episode: episodeIndex + 1,
+                  title: episode.title || `Episode ${episodeIndex + 1}`,
+                  description: episode.description,
+                  duration: episode.duration
+                });
+              });
+            }
+          });
+        }
+        setEpisodeList(episodes);
       }
       
       setLoading(false);
@@ -104,9 +126,19 @@ const SeriesPlayer = () => {
   const getStreamingUrl = () => {
     if (!series?.tmdbId) return null;
     
-    // For series, we'll use the EmbedPlayer which handles stream fetching
-    // This is a fallback for the iframe src
-    return `https://autoembed.co/tv/${series.tmdbId}/${currentSeason}/${currentEpisode}`;
+    // Use SE Player for series with season/episode parameters
+    return generateSEPlayerUrl(series.tmdbId, currentSeason, currentEpisode);
+  };
+
+  const handleEpisodeSelect = (season, episode) => {
+    setCurrentSeason(season);
+    setCurrentEpisode(episode);
+    setShowEpisodeList(false);
+  };
+
+  const getEpisodeTitle = (season, episode) => {
+    const episodeData = episodeList.find(ep => ep.season === season && ep.episode === episode);
+    return episodeData?.title || `Episode ${episode}`;
   };
 
   if (loading) {
@@ -240,6 +272,15 @@ const SeriesPlayer = () => {
                   <ChevronRight size={16} />
                 </button>
               </div>
+
+              {/* Episode List Button */}
+              <button
+                onClick={() => setShowEpisodeList(!showEpisodeList)}
+                className="flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/90 transition-colors duration-200 px-3 py-2 rounded-lg text-sm font-medium"
+              >
+                <List size={16} />
+                All Episodes
+              </button>
             </div>
 
             {/* Current Episode Info */}
@@ -255,6 +296,74 @@ const SeriesPlayer = () => {
                 )}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Episode List Modal */}
+      {showEpisodeList && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-card border border-border rounded-xl max-w-4xl w-full max-h-[80vh] overflow-y-auto">
+            <div className="p-6 border-b border-border">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-foreground">
+                  All Episodes - {series.title}
+                </h2>
+                <button
+                  onClick={() => setShowEpisodeList(false)}
+                  className="p-1 text-muted-foreground hover:text-foreground transition-colors duration-200"
+                >
+                  <ChevronRight size={20} />
+                </button>
+              </div>
+            </div>
+            
+            <div className="p-6">
+              <div className="grid gap-4">
+                {series.seriesInfo?.seasons?.map((season, seasonIndex) => (
+                  <div key={seasonIndex} className="space-y-3">
+                    <h3 className="text-lg font-semibold text-foreground border-b border-border pb-2">
+                      Season {seasonIndex + 1}
+                    </h3>
+                    <div className="grid gap-2">
+                      {season.episodes?.map((episode, episodeIndex) => {
+                        const isCurrent = (seasonIndex + 1) === currentSeason && (episodeIndex + 1) === currentEpisode;
+                        return (
+                          <button
+                            key={episodeIndex}
+                            onClick={() => handleEpisodeSelect(seasonIndex + 1, episodeIndex + 1)}
+                            className={`flex items-center justify-between p-3 rounded-lg text-left transition-colors duration-200 ${
+                              isCurrent 
+                                ? 'bg-primary text-primary-foreground' 
+                                : 'bg-muted hover:bg-muted/80 text-foreground'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-8 h-8 bg-background/20 rounded-full flex items-center justify-center text-sm font-medium">
+                                {episodeIndex + 1}
+                              </div>
+                              <div>
+                                <div className="font-medium">
+                                  {episode.title || `Episode ${episodeIndex + 1}`}
+                                </div>
+                                {episode.description && (
+                                  <div className="text-sm text-muted-foreground line-clamp-2">
+                                    {episode.description}
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            {isCurrent && (
+                              <Play size={16} className="text-primary-foreground" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}

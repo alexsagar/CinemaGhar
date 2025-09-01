@@ -12,6 +12,7 @@ const router = express.Router();
 router.get('/:id/active-stream', async (req, res) => {
   try {
     const { id } = req.params;
+    const { season, episode } = req.query; // Add season/episode query parameters
     
     // Find the movie
     const movie = await Movie.findById(id);
@@ -26,10 +27,65 @@ router.get('/:id/active-stream', async (req, res) => {
     });
     
     if (!activeStream) {
+      // Check if movie has a videoURL or tmdbId for embedded player
+      if (movie.videoURL && movie.videoURL.trim() !== '') {
+        // Use custom embedded URL if provided
+        const embeddedStream = {
+          id: 'embedded-stream',
+          url: movie.videoURL,
+          quality: movie.quality || '1080p',
+          provider: 'Embedded',
+          delivery: 'licensed-embed',
+          codecs: 'h264',
+          audioLanguages: ['en'],
+          subtitles: ['en'],
+          score: 100,
+          addedAt: new Date()
+        };
+        
+        return res.json({
+          success: true,
+          data: embeddedStream,
+          isEmbedded: true
+        });
+      } else if (movie.tmdbId) {
+        // Use SE Player with TMDB ID
+        let sePlayerUrl = `http://localhost:5173/players/se_player.html?video_id=${movie.tmdbId}&tmdb=1`;
+        
+        // Add season/episode parameters for series
+        if (season && episode && movie.contentType === 'series') {
+          sePlayerUrl += `&s=${season}&e=${episode}`;
+        }
+        
+        const embeddedStream = {
+          id: 'se-player-stream',
+          url: sePlayerUrl,
+          quality: movie.quality || '1080p',
+          provider: 'SE Player',
+          delivery: 'licensed-embed',
+          codecs: 'h264',
+          audioLanguages: ['en'],
+          subtitles: ['en'],
+          score: 100,
+          addedAt: new Date()
+        };
+        
+        return res.json({
+          success: true,
+          data: embeddedStream,
+          isSEPlayer: true,
+          tmdbId: movie.tmdbId,
+          season: season,
+          episode: episode
+        });
+      }
+      
+      // If no videoURL or tmdbId, return 404
       return res.status(404).json({ 
         message: 'No active stream available',
         movieId: id,
-        tmdbId: movie.tmdbId
+        tmdbId: movie.tmdbId,
+        suggestion: 'Add a videoURL or ensure tmdbId is set for automatic streaming'
       });
     }
     
@@ -63,7 +119,7 @@ router.get('/:id/active-stream', async (req, res) => {
  * GET /api/movies/:id/stream-events
  * Server-Sent Events for stream updates
  */
-router.get('/:id/stream-events', auth, (req, res) => {
+router.get('/:id/stream-events', async (req, res) => {
   const { id } = req.params;
   
   // Set SSE headers

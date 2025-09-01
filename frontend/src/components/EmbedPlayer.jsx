@@ -23,15 +23,26 @@ const EmbedPlayer = ({ movieId, onStreamChange, episodeInfo }) => {
         eventSourceRef.current.close();
       }
     };
-  }, [movieId]);
+  }, [movieId, episodeInfo]); // Add episodeInfo dependency
 
   const fetchActiveStream = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      const response = await apiClient.getActiveStream(movieId);
-      setStreamData(response.data);
+      // For series with episode info, we need to handle differently
+      if (episodeInfo && episodeInfo.season && episodeInfo.episode) {
+        // For series, use the API with season/episode parameters
+        const response = await apiClient.getActiveStream(movieId, {
+          season: episodeInfo.season,
+          episode: episodeInfo.episode
+        });
+        setStreamData(response.data);
+      } else {
+        // For movies, use the normal API
+        const response = await apiClient.getActiveStream(movieId);
+        setStreamData(response.data);
+      }
       
       // Reset iframe state
       setIframeLoaded(false);
@@ -52,7 +63,7 @@ const EmbedPlayer = ({ movieId, onStreamChange, episodeInfo }) => {
       }
 
       // Setup Server-Sent Events for stream updates
-      const eventSource = new EventSource(`/api/movies/${movieId}/stream-events`);
+      const eventSource = new EventSource(`http://localhost:5000/api/movies/${movieId}/stream-events`);
       eventSourceRef.current = eventSource;
 
       eventSource.onmessage = (event) => {
@@ -81,8 +92,9 @@ const EmbedPlayer = ({ movieId, onStreamChange, episodeInfo }) => {
       };
 
       eventSource.onerror = (error) => {
-        console.error('Stream events error:', error);
-        eventSource.close();
+        console.warn('Stream events connection failed (this is normal for unauthenticated users):', error);
+        // Don't close the connection, just log the warning
+        // Stream events are optional and not critical for basic playback
       };
 
     } catch (error) {

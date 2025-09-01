@@ -146,9 +146,14 @@ export const apiClient = {
     return response.data;
   },
 
+  createMovie: async (movieData) => {
+    const response = await api.post(endpoints.movies.list, movieData);
+    return response.data;
+  },
+
   // New streaming functions
-  getActiveStream: async (movieId) => {
-    const response = await api.get(endpoints.movies.activeStream(movieId));
+  getActiveStream: async (movieId, params = {}) => {
+    const response = await api.get(endpoints.movies.activeStream(movieId), { params });
     return response.data;
   },
 

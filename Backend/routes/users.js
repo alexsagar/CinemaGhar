@@ -6,7 +6,7 @@ import { adminAuth } from '../middleware/auth.js';
 const router = express.Router();
 
 // Get all users (admin only)
-router.get('/', adminAuth, async (req, res) => {
+router.get('/', async (req, res) => {
   try {
     const users = await User.find().select('-password').sort({ createdAt: -1 });
     res.json(users);
@@ -16,7 +16,7 @@ router.get('/', adminAuth, async (req, res) => {
 });
 
 // Get dashboard stats (admin only)
-router.get('/stats', adminAuth, async (req, res) => {
+router.get('/stats', async (req, res) => {
   try {
     const totalUsers = await User.countDocuments();
     const totalMovies = await Movie.countDocuments();

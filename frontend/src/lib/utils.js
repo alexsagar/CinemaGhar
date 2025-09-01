@@ -97,3 +97,52 @@ export function getQualityBadgeClass(quality) {
   
   return `${baseClass} ${qualityClass} bg-opacity-10`;
 }
+
+// SE Player utility functions
+export const generateSEPlayerUrl = (tmdbId, season = null, episode = null) => {
+  const baseUrl = '/players/se_player.html';
+  const params = new URLSearchParams();
+  
+  params.append('video_id', tmdbId);
+  params.append('tmdb', '1');
+  
+  if (season && episode) {
+    params.append('s', season);
+    params.append('e', episode);
+  }
+  
+  return `${baseUrl}?${params.toString()}`;
+};
+
+export const generateIMDBPlayerUrl = (imdbId, season = null, episode = null) => {
+  const baseUrl = '/players/se_player.html';
+  const params = new URLSearchParams();
+  
+  params.append('video_id', imdbId);
+  
+  if (season && episode) {
+    params.append('s', season);
+    params.append('e', episode);
+  }
+  
+  return `${baseUrl}?${params.toString()}`;
+};
+
+// Test SE Player URLs
+export const testSEPlayerUrls = {
+  // Movies
+  movieTMDB: (id) => generateSEPlayerUrl(id),
+  movieIMDB: (id) => generateIMDBPlayerUrl(id),
+  
+  // TV Shows
+  tvTMDB: (id, season, episode) => generateSEPlayerUrl(id, season, episode),
+  tvIMDB: (id, season, episode) => generateIMDBPlayerUrl(id, season, episode),
+  
+  // Example URLs
+  examples: {
+    movieTMDB: '/players/se_player.php?video_id=522931&tmdb=1',
+    movieIMDB: '/players/se_player.php?video_id=tt8385148',
+    tvTMDB: '/players/se_player.php?video_id=60625&tmdb=1&s=5&e=5',
+    tvIMDB: '/players/se_player.php?video_id=tt2861424&s=5&e=5'
+  }
+};

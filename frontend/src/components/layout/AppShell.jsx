@@ -12,8 +12,9 @@ import {
   X, 
   Sun, 
   Moon, 
-  Home,
   Film,
+  Tv,
+  Sparkles,
   Heart,
   Clock,
   User as UserIcon
@@ -79,10 +80,9 @@ const AppShell = ({ children }) => {
   };
 
   const navigation = [
-    { name: 'Home', href: '/', icon: Home },
-    { name: 'Movies', href: '/?category=movie', icon: Film },
-    { name: 'Series', href: '/?category=series', icon: Film },
-    { name: 'Animated', href: '/?category=animated', icon: Film },
+    { name: 'Movies', href: '/?contentType=movie', icon: Film },
+    { name: 'Series', href: '/?contentType=series', icon: Tv },
+    { name: 'Animated', href: '/?contentType=animated', icon: Sparkles },
   ];
 
   const userNavigation = [
@@ -101,29 +101,34 @@ const AppShell = ({ children }) => {
       )}>
         <div className="container mx-auto px-4">
           <div className="flex items-center justify-between h-16">
-            {/* Logo */}
-            <Link to="/" className="flex items-center space-x-2 text-xl font-bold text-primary">
-              <Play className="h-8 w-8" />
-              <span className="hidden sm:inline">StreamFlix</span>
-            </Link>
+                         {/* Logo */}
+             <Link to="/" onClick={() => navigate('/', { replace: true })} className="flex items-center space-x-2 text-xl font-bold text-primary">
+               <Play className="h-8 w-8" />
+               <span className="hidden sm:inline">StreamFlix</span>
+             </Link>
 
             {/* Desktop Navigation */}
             <nav className="hidden md:flex items-center space-x-8">
-              {navigation.map((item) => (
-                <Link
-                  key={item.name}
-                  to={item.href}
-                  className={cn(
-                    "flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                    location.pathname === item.href
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                  )}
-                >
-                  <item.icon className="h-4 w-4" />
-                  <span>{item.name}</span>
-                </Link>
-              ))}
+              {navigation.map((item) => {
+                const isActive = location.search.includes(item.href.split('=')[1]);
+                
+                return (
+                                     <Link
+                     key={item.name}
+                     to={item.href}
+                     onClick={() => navigate(item.href, { replace: true })}
+                     className={cn(
+                       "flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                       isActive
+                         ? "bg-primary text-primary-foreground"
+                         : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                     )}
+                   >
+                     <item.icon className="h-4 w-4" />
+                     <span>{item.name}</span>
+                   </Link>
+                );
+              })}
             </nav>
 
             {/* Search Bar */}
@@ -238,22 +243,29 @@ const AppShell = ({ children }) => {
 
               {/* Mobile Navigation */}
               <nav className="space-y-2 mb-6">
-                {navigation.map((item) => (
-                  <Link
-                    key={item.name}
-                    to={item.href}
-                    onClick={() => setIsMobileMenuOpen(false)}
-                    className={cn(
-                      "flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                      location.pathname === item.href
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:text-foreground hover:bg-accent"
-                    )}
-                  >
-                    <item.icon className="h-4 w-4" />
-                    <span>{item.name}</span>
-                  </Link>
-                ))}
+                {navigation.map((item) => {
+                  const isActive = location.search.includes(item.href.split('=')[1]);
+                  
+                  return (
+                                         <Link
+                       key={item.name}
+                       to={item.href}
+                       onClick={() => {
+                         navigate(item.href, { replace: true });
+                         setIsMobileMenuOpen(false);
+                       }}
+                       className={cn(
+                         "flex items-center space-x-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
+                         isActive
+                           ? "bg-primary text-primary-foreground"
+                           : "text-muted-foreground hover:text-foreground hover:bg-accent"
+                       )}
+                     >
+                       <item.icon className="h-4 w-4" />
+                       <span>{item.name}</span>
+                     </Link>
+                  );
+                })}
               </nav>
 
               {/* Mobile User Menu */}
@@ -315,10 +327,10 @@ const AppShell = ({ children }) => {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
             {/* Brand */}
             <div className="space-y-4">
-              <div className="flex items-center space-x-2 text-xl font-bold text-primary">
-                <Play className="h-6 w-6" />
-                <span>StreamFlix</span>
-              </div>
+                             <Link to="/" onClick={() => navigate('/', { replace: true })} className="flex items-center space-x-2 text-xl font-bold text-primary hover:text-primary/80 transition-colors">
+                 <Play className="h-6 w-6" />
+                 <span>StreamFlix</span>
+               </Link>
               <p className="text-sm text-muted-foreground">
                 Unlimited movies, TV shows, and animated content. Watch anywhere, cancel anytime.
               </p>
@@ -330,12 +342,13 @@ const AppShell = ({ children }) => {
               <ul className="space-y-2 text-sm">
                 {navigation.map((item) => (
                   <li key={item.name}>
-                    <Link
-                      to={item.href}
-                      className="text-muted-foreground hover:text-foreground transition-colors"
-                    >
-                      {item.name}
-                    </Link>
+                                         <Link
+                       to={item.href}
+                       onClick={() => navigate(item.href, { replace: true })}
+                       className="text-muted-foreground hover:text-foreground transition-colors"
+                     >
+                       {item.name}
+                     </Link>
                   </li>
                 ))}
               </ul>

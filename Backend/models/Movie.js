@@ -60,7 +60,11 @@ const movieSchema = new mongoose.Schema({
   },
   thumbnailURL: {
     type: String,
-    required: true
+    default: ''
+  },
+  posterURL: {
+    type: String,
+    default: ''
   },
   backdropURL: {
     type: String,
@@ -68,7 +72,7 @@ const movieSchema = new mongoose.Schema({
   },
   videoURL: {
     type: String,
-    required: true
+    default: ''
   },
   duration: {
     type: String,
@@ -106,7 +110,7 @@ const movieSchema = new mongoose.Schema({
   },
   quality: {
     type: String,
-    enum: ['720p', '1080p', '4K'],
+    enum: ['720p', '1080p', '1440p', '2160p', '4K'],
     default: '1080p'
   },
   tags: [{

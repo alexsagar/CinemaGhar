@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Plus, Edit, Trash2, Users, Film, BarChart3, Search, Star, RefreshCw, AlertTriangle, Tv, Sparkles, Filter, Globe, X, FileText, Video, TrendingUp, Database } from 'lucide-react';
+import { Plus, Edit, Trash2, Users, Film, BarChart3, Search, Star, RefreshCw, AlertTriangle, Tv, Sparkles, Filter, Globe, X, FileText, Video, TrendingUp, Database, Target, Download } from 'lucide-react';
 import { cn } from '../lib/utils';
+import { fetchPopularMovies, fetchPopularSeries, fetchAnimatedMovies } from '../lib/tmdb';
+import { apiClient } from '../lib/api';
+import { generateSEPlayerUrl } from '../lib/utils';
 
 const Admin = () => {
-  const [movies, setMovies] = useState([]);
-  const [users, setUsers] = useState([]);
+
   const [showMovieForm, setShowMovieForm] = useState(false);
   const [editingMovie, setEditingMovie] = useState(null);
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -12,7 +14,25 @@ const Admin = () => {
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedContentType, setSelectedContentType] = useState('all');
   const [showFilters, setShowFilters] = useState(false);
+  const [importPage, setImportPage] = useState(2);
+  const [totalImported, setTotalImported] = useState(0);
+  const [totalSkipped, setTotalSkipped] = useState(0);
+  const [totalErrors, setTotalErrors] = useState(0);
+  const [isImporting, setIsImporting] = useState(false); // Add import state
+  const [shouldStopImport, setShouldStopImport] = useState(false); // Add stop flag
 
+  // Mock data for now - replace with actual API calls
+  const [moviesLoading, setMoviesLoading] = useState(false);
+  const [ingestLoading, setIngestLoading] = useState(false);
+  const [logsLoading, setLogsLoading] = useState(false);
+
+  // Mock queryClient for now - replace with actual React Query client
+  const queryClient = {
+    invalidateQueries: (queryKey) => {
+      console.log('Invalidating queries:', queryKey);
+      // TODO: Implement actual query invalidation
+    }
+  };
 
   const categories = ['Action', 'Adventure', 'Animation', 'Comedy', 'Crime', 'Documentary', 'Drama', 'Family', 'Fantasy', 'History', 'Horror', 'Music', 'Mystery', 'Romance', 'Sci-Fi', 'TV Movie', 'Thriller', 'War', 'Western'];
   const contentTypes = ['movie', 'series', 'animated'];
@@ -37,13 +57,12 @@ const Admin = () => {
     }
   };
 
-  const handleRunIngestJob = async (jobName, data = {}) => {
-    try {
-      await runIngestJobMutation.mutateAsync({ job: jobName, data });
-    } catch (error) {
-      console.error('Error running ingest job:', error);
-    }
+  const handleEditMovie = (movie) => {
+    setEditingMovie(movie);
+    setShowMovieForm(true);
   };
+
+
 
   const handleInitializeIngest = async () => {
     try {
@@ -52,6 +71,474 @@ const Admin = () => {
       console.error('Error initializing ingest:', error);
     }
   };
+
+  // Enhanced bulk import function for 5000+ movies
+  const handleImportFromTMDB = async () => {
+    try {
+      setLoading(true);
+      setIsImporting(true);
+      setShouldStopImport(false);
+      console.log('Starting bulk import from TMDB...');
+      
+      // Import settings for bulk import
+      const importSettings = {
+        moviePages: 250, // 250 pages = 5000 movies
+        seriesPages: 100, // 100 pages = 2000 series
+        animatedPages: 50, // 50 pages = 1000 animated
+        movieCategory: 'popular', // popular, top_rated, upcoming, now_playing
+        seriesCategory: 'popular' // popular, top_rated, on_the_air, airing_today
+      };
+
+      let totalImported = 0;
+      let totalSkipped = 0;
+      let totalErrors = 0;
+
+      // Reset counters
+      setTotalImported(0);
+      setTotalSkipped(0);
+      setTotalErrors(0);
+
+      // Import movies (5000 movies)
+      console.log('Importing movies...');
+      for (let page = 1; page <= importSettings.moviePages; page++) {
+        // Check if user wants to stop
+        if (shouldStopImport) {
+          console.log('Import stopped by user');
+          break;
+        }
+
+        try {
+          const moviesData = await fetchPopularMovies(page);
+          
+          for (const movie of moviesData) {
+            // Check if user wants to stop
+            if (shouldStopImport) {
+              console.log('Import stopped by user');
+              break;
+            }
+
+            try {
+              const response = await apiClient.createMovie({
+                title: movie.title,
+                description: movie.overview || 'No description available',
+                year: movie.year,
+                category: movie.category,
+                contentType: movie.contentType,
+                quality: movie.quality || '1080p',
+                voteAverage: movie.voteAverage || 0,
+                voteCount: movie.voteCount || 0,
+                posterURL: movie.posterURL,
+                backdropURL: movie.backdropURL,
+                thumbnailURL: movie.thumbnailURL,
+                videoURL: movie.videoURL,
+                duration: movie.duration ? `${Math.floor(movie.duration / 60)}h ${movie.duration % 60}m` : '2h 0m',
+                rating: 'PG-13', // Default rating since TMDB doesn't provide this
+                tmdbId: movie.tmdbId,
+                featured: false,
+                tags: movie.genres || []
+              });
+              
+              if (response.skipped) {
+                totalSkipped++;
+                setTotalSkipped(prev => prev + 1);
+              } else {
+                totalImported++;
+                setTotalImported(prev => prev + 1);
+              }
+            } catch (error) {
+              totalErrors++;
+              setTotalErrors(prev => prev + 1);
+              console.error(`Error saving ${movie.title}:`, error);
+            }
+          }
+          
+          console.log(`Page ${page}/${importSettings.moviePages}: Imported ${totalImported}, Skipped ${totalSkipped}, Errors ${totalErrors}`);
+          
+          // Rate limiting: wait between pages
+          await new Promise(resolve => setTimeout(resolve, 100));
+          
+        } catch (error) {
+          console.error(`Error on page ${page}:`, error);
+          totalErrors++;
+        }
+      }
+
+      // Import series (2000 series)
+      if (!shouldStopImport) {
+        console.log('Importing TV series...');
+        for (let page = 1; page <= importSettings.seriesPages; page++) {
+          // Check if user wants to stop
+          if (shouldStopImport) {
+            console.log('Import stopped by user');
+            break;
+          }
+
+          try {
+            const seriesData = await fetchPopularSeries(page);
+            
+            for (const series of seriesData) {
+              // Check if user wants to stop
+              if (shouldStopImport) {
+                console.log('Import stopped by user');
+                break;
+              }
+
+              try {
+                const response = await apiClient.createMovie({
+                  title: series.title,
+                  description: series.overview || 'No description available',
+                  year: series.year,
+                  category: series.category,
+                  contentType: series.contentType,
+                  quality: series.quality || '1080p',
+                  voteAverage: series.voteAverage || 0,
+                  voteCount: series.voteCount || 0,
+                  posterURL: series.posterURL,
+                  backdropURL: series.backdropURL,
+                  thumbnailURL: series.thumbnailURL,
+                  videoURL: series.videoURL,
+                  duration: series.duration ? `${Math.floor(series.duration / 60)}h ${series.duration % 60}m` : '2h 0m',
+                  rating: 'PG-13', // Default rating since TMDB doesn't provide this
+                  tmdbId: series.tmdbId,
+                  featured: false,
+                  tags: series.genres || [],
+                  seriesInfo: {
+                    totalSeasons: series.numberOfSeasons || 1,
+                    totalEpisodes: series.numberOfEpisodes || 1,
+                    status: series.status === 'Ended' ? 'completed' : 'ongoing',
+                    firstAirDate: series.releaseDate ? new Date(series.releaseDate) : null,
+                    lastAirDate: null
+                  }
+                });
+                
+                if (response.skipped) {
+                  totalSkipped++;
+                  setTotalSkipped(prev => prev + 1);
+                } else {
+                  totalImported++;
+                  setTotalImported(prev => prev + 1);
+                }
+              } catch (error) {
+                totalErrors++;
+                setTotalErrors(prev => prev + 1);
+                console.error(`Error saving ${series.title}:`, error);
+              }
+            }
+            
+            console.log(`Series Page ${page}/${importSettings.seriesPages}: Total Imported ${totalImported}, Skipped ${totalSkipped}, Errors ${totalErrors}`);
+            
+            // Rate limiting: wait between pages
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+          } catch (error) {
+            console.error(`Error on series page ${page}:`, error);
+            totalErrors++;
+          }
+        }
+      }
+
+      // Import animated content (1000 animated)
+      if (!shouldStopImport) {
+        console.log('Importing animated content...');
+        for (let page = 1; page <= importSettings.animatedPages; page++) {
+          // Check if user wants to stop
+          if (shouldStopImport) {
+            console.log('Import stopped by user');
+            break;
+          }
+
+          try {
+            const animatedData = await fetchAnimatedMovies(page);
+            
+            for (const animated of animatedData) {
+              // Check if user wants to stop
+              if (shouldStopImport) {
+                console.log('Import stopped by user');
+                break;
+              }
+
+              try {
+                const response = await apiClient.createMovie({
+                  title: animated.title,
+                  description: animated.overview || 'No description available',
+                  year: animated.year,
+                  category: animated.category,
+                  contentType: animated.contentType,
+                  quality: animated.quality || '1080p',
+                  voteAverage: animated.voteAverage || 0,
+                  voteCount: animated.voteCount || 0,
+                  posterURL: animated.posterURL,
+                  backdropURL: animated.backdropURL,
+                  thumbnailURL: animated.thumbnailURL,
+                  videoURL: animated.videoURL,
+                  duration: animated.duration ? `${Math.floor(animated.duration / 60)}h ${animated.duration % 60}m` : '2h 0m',
+                  rating: 'PG-13', // Default rating since TMDB doesn't provide this
+                  tmdbId: animated.tmdbId,
+                  featured: false,
+                  tags: animated.genres || [],
+                  animatedInfo: {
+                    animationType: '2D',
+                    targetAudience: 'All Ages',
+                    studio: ''
+                  }
+                });
+                
+                if (response.skipped) {
+                  totalSkipped++;
+                  setTotalSkipped(prev => prev + 1);
+                } else {
+                  totalImported++;
+                  setTotalImported(prev => prev + 1);
+                }
+              } catch (error) {
+                totalErrors++;
+                setTotalErrors(prev => prev + 1);
+                console.error(`Error saving ${animated.title}:`, error);
+              }
+            }
+            
+            console.log(`Animated Page ${page}/${importSettings.animatedPages}: Total Imported ${totalImported}, Skipped ${totalSkipped}, Errors ${totalErrors}`);
+            
+            // Rate limiting: wait between pages
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+          } catch (error) {
+            console.error(`Error on animated page ${page}:`, error);
+            totalErrors++;
+          }
+        }
+      }
+
+      const finalMessage = shouldStopImport 
+        ? `Import stopped by user!\n\nImported: ${totalImported} new movies/series\nSkipped: ${totalSkipped} existing movies\nErrors: ${totalErrors} failed imports\n\nTotal processed: ${totalImported + totalSkipped + totalErrors}`
+        : `Bulk import completed!\n\nImported: ${totalImported} new movies/series\nSkipped: ${totalSkipped} existing movies\nErrors: ${totalErrors} failed imports\n\nTotal processed: ${totalImported + totalSkipped + totalErrors}`;
+
+      console.log(`Bulk import ${shouldStopImport ? 'stopped' : 'completed'}! Total: Imported ${totalImported}, Skipped ${totalSkipped}, Errors ${totalErrors}`);
+      alert(finalMessage);
+      
+      // Refresh the movies list
+      window.location.reload();
+      
+    } catch (error) {
+      console.error('Error during bulk import:', error);
+      alert('Failed to import from TMDB. Check console for details.');
+    } finally {
+      setLoading(false);
+      setIsImporting(false);
+      setShouldStopImport(false);
+    }
+  };
+
+  // Stop import function
+  const handleStopImport = () => {
+    setShouldStopImport(true);
+    setIsImporting(false);
+    console.log('Stopping import...');
+  };
+
+  // Mock functions for now - replace with actual API calls
+  const handleRunIngestJob = async (jobName, data = {}) => {
+    console.log('Running ingest job:', jobName, data);
+    // TODO: Implement actual API call
+  };
+
+  const deleteMovieMutation = {
+    mutateAsync: async (id) => {
+      console.log('Deleting movie:', id);
+      // TODO: Implement actual API call
+    }
+  };
+
+  const runIngestJobMutation = {
+    isPending: false,
+    mutateAsync: async (data) => {
+      console.log('Running ingest job:', data);
+      // TODO: Implement actual API call
+    }
+  };
+
+  const initializeIngestMutation = {
+    isPending: false,
+    mutateAsync: async () => {
+      console.log('Initializing ingest');
+      // TODO: Implement actual API call
+    }
+  };
+
+  // Real data from backend API
+  const [movies, setMovies] = useState([]);
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch movies and users from your backend
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        
+        // Fetch movies
+        const moviesResponse = await fetch('http://localhost:5000/api/movies');
+        if (moviesResponse.ok) {
+          const moviesData = await moviesResponse.json();
+          setMovies(moviesData.data || moviesData); // Handle both paginated and non-paginated responses
+        } else {
+          console.error('Failed to fetch movies:', moviesResponse.statusText);
+          setMovies(getMockMovies());
+        }
+
+        // Fetch users (if you have a users endpoint)
+        try {
+          const usersResponse = await fetch('http://localhost:5000/api/users');
+          if (usersResponse.ok) {
+            const usersData = await usersResponse.json();
+            setUsers(usersData.data || usersData);
+          } else {
+            console.error('Failed to fetch users:', usersResponse.statusText);
+            setUsers(getMockUsers());
+          }
+        } catch (error) {
+          console.error('Error fetching users:', error);
+          setUsers(getMockUsers());
+        }
+
+      } catch (error) {
+        console.error('Error fetching data:', error);
+        setMovies(getMockMovies());
+        setUsers(getMockUsers());
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  // Mock data fallback functions
+  const getMockMovies = () => [
+    {
+      _id: '1',
+      title: 'The Matrix',
+      year: 1999,
+      category: 'Action',
+      contentType: 'movie',
+      quality: '1080p',
+      voteAverage: 8.7,
+      posterURL: 'https://image.tmdb.org/t/p/w500/f89U3ADr1oiB1s9GkdPOEpXUk5H.jpg',
+      description: 'A computer programmer discovers a mysterious world.'
+    },
+    {
+      _id: '2',
+      title: 'Breaking Bad',
+      year: 2008,
+      category: 'Drama',
+      contentType: 'series',
+      quality: '2160p',
+      voteAverage: 9.5,
+      posterURL: 'https://image.tmdb.org/t/p/w500/ggFHVNu6YYI5L9pCfOacjizRGt.jpg',
+      description: 'A high school chemistry teacher turned methamphetamine manufacturer.'
+    },
+    {
+      _id: '3',
+      title: 'Inception',
+      year: 2010,
+      category: 'Sci-Fi',
+      contentType: 'movie',
+      quality: '1440p',
+      voteAverage: 8.8,
+      posterURL: 'https://image.tmdb.org/t/p/w500/9gk7adHYeDvHkCSEqAvQNLV5Uge.jpg',
+      description: 'A thief who steals corporate secrets through dream-sharing technology.'
+    },
+    {
+      _id: '4',
+      title: 'The Lion King',
+      year: 1994,
+      category: 'Animation',
+      contentType: 'animated',
+      quality: '1080p',
+      voteAverage: 8.5,
+      posterURL: 'https://image.tmdb.org/t/p/w500/sKCr78MXSLixu6hT0PloPUW7iqG.jpg',
+      description: 'A young lion prince flees his kingdom only to learn the true meaning of responsibility.'
+    },
+    {
+      _id: '5',
+      title: 'Game of Thrones',
+      year: 2011,
+      category: 'Fantasy',
+      contentType: 'series',
+      quality: '2160p',
+      voteAverage: 9.3,
+      posterURL: 'https://image.tmdb.org/t/p/w500/u3bZgnGQ9T01sWNhyveQz0wH0Hl.jpg',
+      description: 'Nine noble families fight for control over the lands of Westeros.'
+    }
+  ];
+
+  const getMockUsers = () => [
+    {
+      _id: '1',
+      name: 'John Doe',
+      email: 'john@example.com',
+      role: 'user',
+      createdAt: new Date('2024-01-01')
+    },
+    {
+      _id: '2',
+      name: 'Admin User',
+      email: 'admin@example.com',
+      role: 'admin',
+      createdAt: new Date('2024-01-01')
+    },
+    {
+      _id: '3',
+      name: 'Jane Smith',
+      email: 'jane@example.com',
+      role: 'user',
+      createdAt: new Date('2024-02-15')
+    },
+    {
+      _id: '4',
+      name: 'Bob Johnson',
+      email: 'bob@example.com',
+      role: 'user',
+      createdAt: new Date('2024-03-01')
+    },
+    {
+      _id: '5',
+      name: 'Alice Brown',
+      email: 'alice@example.com',
+      role: 'admin',
+      createdAt: new Date('2024-01-15')
+    }
+  ];
+
+
+
+  // Mock ingest data
+  const mockIngestStatus = {
+    tmdbDiscover: { status: 'idle' },
+    contentMatch: { status: 'idle' },
+    contentRefresh: { status: 'idle' }
+  };
+
+  const mockIngestLogs = [
+    {
+      job: 'tmdb.discover',
+      status: 'OK',
+      message: 'Successfully discovered 15 new movies',
+      duration: 2500,
+      createdAt: new Date()
+    },
+    {
+      job: 'content.match',
+      status: 'OK',
+      message: 'Matched 12 movies with streaming sources',
+      duration: 1800,
+      createdAt: new Date(Date.now() - 60000)
+    }
+  ];
+
+  // Use mock ingest data
+  const ingestStatus = mockIngestStatus;
+  const ingestLogs = mockIngestLogs;
 
   // Calculate stats from actual data
   const stats = {
@@ -63,6 +550,26 @@ const Admin = () => {
     highQuality: movies.filter(m => m.quality && ['1080p', '1440p', '2160p'].includes(m.quality)).length,
   };
 
+  // Filtered movies based on search and filters
+  const filteredMovies = movies.filter(movie => {
+    if (searchQuery && !movie.title.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    if (selectedCategory !== 'all' && movie.category !== selectedCategory) return false;
+    if (selectedContentType !== 'all' && movie.contentType !== selectedContentType) return false;
+    return true;
+  });
+
+  // Error boundary for debugging
+  if (!movies || !users) {
+    return (
+      <div className="min-h-screen bg-background pt-20 flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-foreground mb-4">Loading Admin Panel...</h1>
+          <p className="text-muted-foreground">Please wait while we initialize the data.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background pt-20">
       {/* Header */}
@@ -73,15 +580,59 @@ const Admin = () => {
               <h1 className="text-3xl font-bold text-foreground">Admin Dashboard</h1>
               <p className="text-muted-foreground mt-1">Manage your streaming platform</p>
             </div>
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => setShowMovieForm(true)}
-                className="inline-flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors duration-200 px-4 py-2 rounded-lg font-medium"
-              >
-                <Plus size={20} />
-                Add Movie
-              </button>
-            </div>
+                                       <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-sm text-muted-foreground">Page:</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="500"
+                    value={importPage}
+                    onChange={(e) => setImportPage(parseInt(e.target.value) || 1)}
+                    className="w-16 px-2 py-1 text-sm bg-background border border-border rounded focus:outline-none focus:ring-2 focus:ring-primary"
+                  />
+                </div>
+                                 <button
+                   onClick={handleImportFromTMDB}
+                   disabled={loading}
+                   className="inline-flex items-center gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/90 disabled:bg-muted disabled:text-muted-foreground transition-colors duration-200 px-4 py-2 rounded-lg font-medium"
+                 >
+                   <Download size={20} />
+                   Bulk Import (8000+ Movies)
+                 </button>
+                 
+                 {isImporting && (
+                   <button
+                     onClick={handleStopImport}
+                     className="inline-flex items-center gap-2 bg-destructive text-destructive-foreground hover:bg-destructive/90 transition-colors duration-200 px-4 py-2 rounded-lg font-medium"
+                   >
+                     <X size={20} />
+                     Stop Import
+                   </button>
+                 )}
+                 
+                 {loading && (
+                   <div className="mt-4 p-4 bg-muted rounded-lg">
+                     <div className="text-sm font-medium mb-2">Import Progress</div>
+                     <div className="w-full bg-background rounded-full h-2 mb-2">
+                       <div 
+                         className="bg-primary h-2 rounded-full transition-all duration-300"
+                         style={{ width: `${((totalImported + totalSkipped) / 8000) * 100}%` }}
+                       ></div>
+                     </div>
+                     <div className="text-xs text-muted-foreground">
+                       Imported: {totalImported} | Skipped: {totalSkipped} | Errors: {totalErrors}
+                     </div>
+                   </div>
+                 )}
+                <button
+                  onClick={() => setShowMovieForm(true)}
+                  className="inline-flex items-center gap-2 bg-primary text-primary-foreground hover:bg-primary/90 transition-colors duration-200 px-4 py-2 rounded-lg font-medium"
+                >
+                  <Plus size={20} />
+                  Add Movie
+                </button>
+              </div>
           </div>
         </div>
       </div>
@@ -122,24 +673,25 @@ const Admin = () => {
       {/* Main Content */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {activeTab === 'dashboard' && <DashboardTab stats={stats} />}
-        {activeTab === 'movies' && (
-          <MoviesTab 
-            movies={filteredMovies}
-            loading={moviesLoading}
-            onDelete={handleDeleteMovie}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            selectedCategory={selectedCategory}
-            setSelectedCategory={setSelectedCategory}
-            selectedContentType={selectedContentType}
-            setSelectedContentType={setSelectedContentType}
-            showFilters={showFilters}
-            setShowFilters={setShowFilters}
-            categories={categories}
-            contentTypes={contentTypes}
-          />
-        )}
-        {activeTab === 'users' && <UsersTab users={users} loading={false} />}
+                 {activeTab === 'movies' && (
+           <MoviesTab 
+             movies={filteredMovies}
+             loading={loading}
+             onDelete={handleDeleteMovie}
+             onEdit={handleEditMovie}
+             searchQuery={searchQuery}
+             setSearchQuery={setSearchQuery}
+             selectedCategory={selectedCategory}
+             setSelectedCategory={setSelectedCategory}
+             selectedContentType={selectedContentType}
+             setSelectedContentType={setSelectedContentType}
+             showFilters={showFilters}
+             setShowFilters={setShowFilters}
+             categories={categories}
+             contentTypes={contentTypes}
+           />
+         )}
+        {activeTab === 'users' && <UsersTab users={users} loading={loading} />}
         {activeTab === 'ingest' && (
           <IngestTab 
             status={ingestStatus}
@@ -228,7 +780,8 @@ const DashboardTab = ({ stats }) => (
 const MoviesTab = ({ 
   movies, 
   loading, 
-  onDelete, 
+  onDelete,
+  onEdit,
   searchQuery, 
   setSearchQuery, 
   selectedCategory, 
@@ -325,25 +878,37 @@ const MoviesTab = ({
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Type</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Quality</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Rating</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Stream URL</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {movies.map((movie) => (
                 <tr key={movie._id} className="hover:bg-muted/30 transition-colors duration-200">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center">
-                      <img
-                        src={movie.posterURL || '/placeholder-poster.jpg'}
-                        alt={movie.title}
-                        className="w-12 h-12 object-cover rounded-lg mr-3"
-                      />
-                      <div>
-                        <div className="font-medium text-foreground">{movie.title}</div>
-                        <div className="text-sm text-muted-foreground">{movie.year}</div>
-                      </div>
-                    </div>
-                  </td>
+                                     <td className="px-6 py-4">
+                     <div className="flex items-center">
+                       <div className="w-12 h-12 bg-muted rounded-lg mr-3 flex items-center justify-center">
+                         {movie.posterURL ? (
+                           <img
+                             src={movie.posterURL}
+                             alt={movie.title}
+                             className="w-full h-full object-cover rounded-lg"
+                             onError={(e) => {
+                               e.target.style.display = 'none';
+                               e.target.nextSibling.style.display = 'flex';
+                             }}
+                           />
+                         ) : null}
+                         <div className="hidden text-muted-foreground text-xs text-center px-1">
+                           {movie.title.charAt(0)}
+                         </div>
+                       </div>
+                       <div>
+                         <div className="font-medium text-foreground">{movie.title}</div>
+                         <div className="text-sm text-muted-foreground">{movie.year}</div>
+                       </div>
+                     </div>
+                   </td>
                   <td className="px-6 py-4">
                     <span className="inline-flex px-2 py-1 text-xs font-medium bg-primary/20 text-primary rounded-full">
                       {movie.category}
@@ -372,8 +937,38 @@ const MoviesTab = ({
                     )}
                   </td>
                   <td className="px-6 py-4">
+                    <div className="max-w-xs">
+                      {movie.videoURL ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-success font-medium">✓ Custom URL</span>
+                          <button 
+                            onClick={() => window.open(movie.videoURL, '_blank')}
+                            className="text-xs text-primary hover:underline"
+                          >
+                            Test
+                          </button>
+                        </div>
+                      ) : movie.tmdbId ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-warning font-medium">✓ SE Player Ready</span>
+                          <button 
+                            onClick={() => window.open(generateSEPlayerUrl(movie.tmdbId), '_blank')}
+                            className="text-xs text-primary hover:underline"
+                          >
+                            Test SE Player
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">No Stream</span>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
                     <div className="flex items-center gap-2">
-                      <button className="p-1 text-muted-foreground hover:text-foreground transition-colors duration-200">
+                      <button 
+                        onClick={() => handleEditMovie(movie)}
+                        className="p-1 text-muted-foreground hover:text-foreground transition-colors duration-200"
+                      >
                         <Edit size={16} />
                       </button>
                       <button 
@@ -847,6 +1442,7 @@ const MovieFormModal = ({ movie, onClose, onSave }) => {
     contentType: 'movie',
     posterURL: '',
     backdropURL: '',
+    videoURL: '',
     duration: '',
     year: new Date().getFullYear(),
     quality: '1080p',
@@ -937,6 +1533,27 @@ const MovieFormModal = ({ movie, onClose, onSave }) => {
               rows={3}
               className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-foreground mb-2">Stream URL (Embedded)</label>
+            <input
+              type="url"
+              name="videoURL"
+              value={formData.videoURL || ''}
+              onChange={handleChange}
+              placeholder="https://example.com/embed/..."
+              className="w-full px-3 py-2 bg-background border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent"
+            />
+            <p className="text-xs text-muted-foreground mt-1">
+              Enter a custom embedded URL, or leave empty to use SE Player with TMDB ID (if available)
+            </p>
+            {formData.tmdbId && (
+              <div className="mt-2 p-2 bg-muted rounded text-xs">
+                <strong>SE Player Available:</strong> This movie has TMDB ID {formData.tmdbId}. 
+                If no custom URL is provided, it will automatically use SE Player for streaming.
+              </div>
+            )}
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">

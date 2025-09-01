@@ -37,14 +37,24 @@ const Home = () => {
     const urlParams = new URLSearchParams(location.search);
     const searchParam = urlParams.get('search');
     const categoryParam = urlParams.get('category');
+    const contentTypeParam = urlParams.get('contentType');
     
     if (searchParam) {
       setSearchTerm(searchParam);
       setSelectedCategory('all');
       setSelectedContentType('all');
+    } else if (contentTypeParam) {
+      setSelectedContentType(contentTypeParam);
+      setSearchTerm('');
+      setSelectedCategory('all');
     } else if (categoryParam) {
       setSelectedCategory(categoryParam);
       setSearchTerm('');
+      setSelectedContentType('all');
+    } else {
+      // Reset all filters when no parameters are present (landing page)
+      setSearchTerm('');
+      setSelectedCategory('all');
       setSelectedContentType('all');
     }
   }, [location.search]);
@@ -111,9 +121,9 @@ const Home = () => {
 
   // Categorize content
   const categorizeContent = () => {
-    if (!movies.length) return {};
+    if (!filteredMovies.length) return {};
 
-    const trending = movies
+    const trending = filteredMovies
       .filter(movie => (movie.voteAverage || 0) >= 7)
       .sort((a, b) => (b.voteAverage || 0) - (a.voteAverage || 0))
       .slice(0, 12);
@@ -130,19 +140,19 @@ const Home = () => {
       movie.contentType === 'animated'
     );
 
-    const popular = movies
+    const popular = filteredMovies
       .sort((a, b) => (b.voteAverage || 0) - (a.voteAverage || 0))
       .slice(0, 12);
 
-    const latest = movies
+    const latest = filteredMovies
       .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
       .slice(0, 12);
 
-    const action = movies
+    const action = filteredMovies
       .filter(movie => movie.category === 'Action')
       .slice(0, 12);
 
-    const comedy = movies
+    const comedy = filteredMovies
       .filter(movie => movie.category === 'Comedy')
       .slice(0, 12);
 
@@ -157,6 +167,20 @@ const Home = () => {
     };
   };
 
+  // Get filtered content based on content type
+  const getFilteredContent = () => {
+    if (selectedContentType === 'movie') {
+      return movies.filter(movie => movie.contentType === 'movie' || !movie.contentType);
+    } else if (selectedContentType === 'series') {
+      return movies.filter(movie => movie.contentType === 'series');
+    } else if (selectedContentType === 'animated') {
+      return movies.filter(movie => movie.contentType === 'animated');
+    }
+    return movies;
+  };
+  
+  const filteredMovies = getFilteredContent();
+  
   const content = categorizeContent();
   const showSections = !searchTerm && selectedCategory === 'all' && selectedContentType === 'all';
   const hasActiveFilters = searchTerm || selectedCategory !== 'all' || selectedContentType !== 'all';
@@ -189,7 +213,7 @@ const Home = () => {
 
       <div className="min-h-screen bg-background">
         {/* Hero Section */}
-        {showSections && (
+        {showSections && !hasActiveFilters && (
           <section className="relative bg-gradient-to-br from-primary/10 via-primary/5 to-background py-20">
             <div className="container mx-auto px-4 text-center">
               <div className="max-w-4xl mx-auto space-y-6">
@@ -232,25 +256,40 @@ const Home = () => {
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-2xl mx-auto">
                     <div className="text-center">
                       <div className="text-2xl font-bold text-primary">
-                        {movies.filter(m => m.contentType === 'movie' || !m.contentType).length}
+                        {filteredMovies.filter(m => m.contentType === 'movie' || !m.contentType).length}
                       </div>
                       <div className="text-sm text-muted-foreground">Movies</div>
                     </div>
                     <div className="text-center">
                       <div className="text-2xl font-bold text-primary">
-                        {movies.filter(m => m.contentType === 'series').length}
+                        {filteredMovies.filter(m => m.contentType === 'series').length}
                       </div>
                       <div className="text-sm text-muted-foreground">Series</div>
                     </div>
                     <div className="text-center">
                       <div className="text-2xl font-bold text-primary">
-                        {movies.filter(m => m.contentType === 'animated').length}
+                        {filteredMovies.filter(m => m.contentType === 'animated').length}
                       </div>
                       <div className="text-sm text-muted-foreground">Animated</div>
                     </div>
                   </div>
                 )}
               </div>
+            </div>
+          </section>
+        )}
+
+        {/* Content Type Header */}
+        {selectedContentType !== 'all' && !searchTerm && (
+          <section className="py-12 bg-gradient-to-r from-primary/5 to-secondary/5">
+            <div className="container mx-auto px-4 text-center">
+              <h1 className="text-4xl font-bold text-foreground mb-4">
+                {selectedContentType.charAt(0).toUpperCase() + selectedContentType.slice(1)} Library
+              </h1>
+              <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
+                Discover our collection of {selectedContentType === 'movie' ? 'movies' : 
+                 selectedContentType === 'series' ? 'TV series' : 'animated content'}.
+              </p>
             </div>
           </section>
         )}
@@ -339,7 +378,7 @@ const Home = () => {
                   </div>
                 ))}
               </div>
-            ) : showSections ? (
+            ) : (!searchTerm && (showSections || selectedContentType !== 'all')) ? (
               // Categorized Sections
               <div className="space-y-12">
                 {/* Trending Movies */}
@@ -418,30 +457,66 @@ const Home = () => {
                   <div className="space-y-4">
                     <h2 className="text-2xl font-bold">All Content</h2>
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                      {movies.map((movie) => (
+                      {filteredMovies.map((movie) => (
                         <MovieCard key={movie._id} movie={movie} />
                       ))}
                     </div>
                   </div>
                 )}
               </div>
-            ) : (
+            ) : selectedContentType !== 'all' ? (
+              // Content Type Filtered Results
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-bold">
+                    {selectedContentType.charAt(0).toUpperCase() + selectedContentType.slice(1)} Content
+                  </h2>
+                  <span className="text-muted-foreground">
+                    {filteredMovies.length} result{filteredMovies.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                {filteredMovies.length > 0 ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                    {filteredMovies.map((movie) => (
+                      <MovieCard key={movie._id} movie={movie} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <div className="max-w-md mx-auto space-y-4">
+                      <div className="text-6xl">🎬</div>
+                      <h3 className="text-xl font-semibold">No {selectedContentType} found</h3>
+                      <p className="text-muted-foreground">
+                        We don't have any {selectedContentType} content at the moment.
+                      </p>
+                      <button
+                        onClick={resetFilters}
+                        className="btn-primary"
+                      >
+                        View All Content
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (searchTerm || selectedCategory !== 'all') ? (
               // Filtered Results
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <h2 className="text-2xl font-bold">
                     {searchTerm ? `Search Results for "${searchTerm}"` : 
                      selectedCategory !== 'all' ? `${selectedCategory} Content` :
-                     selectedContentType !== 'all' ? `${selectedContentType} Content` : 'Filtered Results'}
+                     selectedContentType !== 'all' ? `${selectedContentType.charAt(0).toUpperCase() + selectedContentType.slice(1)} Content` : 'Filtered Results'}
                   </h2>
                   <span className="text-muted-foreground">
-                    {movies.length} result{movies.length !== 1 ? 's' : ''}
+                    {filteredMovies.length} result{filteredMovies.length !== 1 ? 's' : ''}
                   </span>
                 </div>
 
-                {movies.length > 0 ? (
+                {filteredMovies.length > 0 ? (
                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-                    {movies.map((movie) => (
+                    {filteredMovies.map((movie) => (
                       <MovieCard key={movie._id} movie={movie} />
                     ))}
                   </div>
@@ -459,6 +534,34 @@ const Home = () => {
                       >
                         Clear Filters
                       </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ) : (
+              // Default: Show all content
+              <div className="space-y-6">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-2xl font-bold">All Content</h2>
+                  <span className="text-muted-foreground">
+                    {filteredMovies.length} result{filteredMovies.length !== 1 ? 's' : ''}
+                  </span>
+                </div>
+
+                {filteredMovies.length > 0 ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                    {filteredMovies.map((movie) => (
+                      <MovieCard key={movie._id} movie={movie} />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <div className="max-w-md mx-auto space-y-4">
+                      <div className="text-6xl">🎬</div>
+                      <h3 className="text-xl font-semibold">No content available</h3>
+                      <p className="text-muted-foreground">
+                        We don't have any content at the moment.
+                      </p>
                     </div>
                   </div>
                 )}
